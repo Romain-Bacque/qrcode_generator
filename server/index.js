@@ -38,13 +38,18 @@ app.post("/generate-qr", async (req, res) => {
   const { url } = req.body; // This line extracts the URL from the request body.
 
   console.log("URL received: ", url);
-  
-  const qrCode = await qrcode.toBuffer(url); // This line generates a QR code image from the URL using the qrcode module and stores it in the qrCode variable.
 
+  const qrCode = await qrcode.toBuffer(url); // This line generates a QR code image from the URL using the qrcode module and stores it in the qrCode variable.
+  
   const bufferStream = new Readable(); // This line creates a new Readable stream using the Readable class from the Node.js stream module (a Readable stream is an abstraction for a source from which data can be consumed). This stream will be used to store the QR code image data.
 
   bufferStream.push(qrCode); // This line pushes the QR code image data into the bufferStream.
   bufferStream.push(null); // This line signals the end of the stream by pushing a null value into the bufferStream.
+
+  // we have to use a buffer stream to store the QR code image data before uploading it to Azure Blob Storage. This is because the uploadStream method from the Azure Blob Storage SDK expects a readable stream as input. By using a buffer stream, we can store the QR code image data in memory before uploading it to Azure Blob Storage.
+  // The bufferStream.push(qrCode) line pushes the QR code image data into the bufferStream, and the bufferStream.push(null) line signals the end of the stream by pushing a null value into the bufferStream.
+
+  // using streams to handle data in Node.js is a common practice for handling large amounts of data efficiently. Streams allow you to process data in chunks ("morceaux" en français), which can be more memory-efficient than loading the entire data into memory at once.
 
   // Generate unique file name for Azure Blob Storage
   const fileName = `qr_codes/${uuidv4()}.png`; // This line generates a unique file name for the QR code image by combining the qr_codes/ prefix with a UUID (generated using the uuid module) and the .png extension.
@@ -55,13 +60,13 @@ app.post("/generate-qr", async (req, res) => {
 
     // Upload QR code image to Azure Blob Storage
     await blockBlobClient.uploadStream(bufferStream, 4 * 1024 * 1024, 20, {
-      // 4 * 1024 * 1024 = 4MB, 20 = max number of parallel requests
+      // 4 * 1024 * 1024 = 4MB, 20 = max number of parallel requests (it means that the SDK will upload the file in chunks of 4MB and will make 20 parallel requests to upload the file)
       blobHTTPHeaders: {
-        blobContentType: "image/png",
+        blobContentType: "image/png", // Set content type of the blob to image/png
       },
     });
 
-    // Generate SAS token for blob
+    // Generate Shared Access Signature (SAS) token is generated for the blob, which provides temporary access to the blob with specified permissions (in this case, read-only).
     const sasToken = generateSasToken(blockBlobClient);
 
     // Generate the Blob URL with SAS token
